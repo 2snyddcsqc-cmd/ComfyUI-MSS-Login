@@ -4,11 +4,12 @@ Download models from CivitAI and HuggingFace to a local path or S3 mount path.
 
 import asyncio
 import os
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Awaitable, Callable, Optional, Union
+from typing import Optional, Union
 
 # Type for progress callback: (bytes_done, total_bytes) -> None or awaitable
-ProgressCallback = Optional[Callable[[int, Optional[int]], Union[None, Awaitable[None]]]]
+ProgressCallback = Optional[Callable[[int, int | None], None | Awaitable[None]]]
 
 # CivitAI: HTTP stream with token
 CIVITAI_DOWNLOAD_BASE = "https://civitai.com/api/download/models"
@@ -18,8 +19,8 @@ async def download_civitai_async(
 	model_version_id: str,
 	token: str,
 	dest_path: str | Path,
-	type_param: Optional[str] = None,
-	format_param: Optional[str] = None,
+	type_param: str | None = None,
+	format_param: str | None = None,
 	progress_callback: ProgressCallback = None,
 ) -> tuple[bool, str]:
 	"""
@@ -129,8 +130,8 @@ def download_huggingface(
 	filename: str,
 	token: str,
 	dest_dir: str | Path,
-	subfolder: Optional[str] = None,
-	progress_dict: Optional[dict] = None,
+	subfolder: str | None = None,
+	progress_dict: dict | None = None,
 ) -> tuple[bool, str]:
 	"""
 	Download a file from HuggingFace Hub to dest_dir. Uses huggingface_hub if available.

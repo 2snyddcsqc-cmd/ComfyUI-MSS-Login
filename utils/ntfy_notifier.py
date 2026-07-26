@@ -15,20 +15,20 @@ Admin configures topic, base URL, and per-event toggles in config.json
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
 import logging
 import math
 import mimetypes
 import os
-import time
 import threading
-from datetime import datetime, timezone
-import hmac
-import hashlib
-import base64
-from urllib.parse import quote_plus
+import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timezone
 from typing import Dict, List, Optional, Union
+from urllib.parse import quote_plus
 
 import requests
 
@@ -77,7 +77,7 @@ VALID_PRIORITIES = frozenset(
 # Event keys (toggleable by admin in settings)
 # ---------------------------------------------------------------------------
 
-EVENT_KEYS: List[str] = [
+EVENT_KEYS: list[str] = [
 	"nsfw_block",
 	"user_created",
 	"user_login",
@@ -106,7 +106,7 @@ EVENT_KEYS: List[str] = [
 # Reference: https://docs.ntfy.sh/emojis/
 # ---------------------------------------------------------------------------
 
-_EVENT_DEFAULTS: Dict[str, Dict[str, Union[str, List[str]]]] = {
+_EVENT_DEFAULTS: dict[str, dict[str, str | list[str]]] = {
 	"nsfw_block": {"tags": ["no_entry_sign", "nsfw"], "priority": PRIORITY_HIGH},
 	"user_created": {"tags": ["tada", "new_user"], "priority": PRIORITY_DEFAULT},
 	"user_login": {"tags": ["key", "login"], "priority": PRIORITY_DEFAULT},
@@ -219,7 +219,7 @@ def _validate_ntfy_base_url(url: str) -> str:
 
 
 def save_ntfy_config(
-	topic: str, enabled_events: List[str], base_url: str = "", api_token: Optional[str] = None
+	topic: str, enabled_events: list[str], base_url: str = "", api_token: str | None = None
 ) -> None:
 	"""
 	Persist ntfy config to config.json.
@@ -272,7 +272,7 @@ def _resolve_api_key(explicit_key: str, config_key: str) -> str:
 	return (NTFY_API_KEY or "").strip()
 
 
-def nsfw_score_to_severity(score: Optional[float]) -> Optional[int]:
+def nsfw_score_to_severity(score: float | None) -> int | None:
 	"""
 	Map NSFW score (0.0-1.0) to severity (1-10).
 	Returns None when score is unavailable.
@@ -307,7 +307,7 @@ def create_signed_action_token(payload: dict, ttl_seconds: int = 900) -> str:
 	return f"{_b64url_encode(payload_bytes)}.{_b64url_encode(signature)}"
 
 
-def verify_signed_action_token(token: str) -> Optional[dict]:
+def verify_signed_action_token(token: str) -> dict | None:
 	"""Verify token signature and expiry; return payload on success."""
 	if not token or "." not in token:
 		return None
@@ -333,9 +333,9 @@ def build_nsfw_quarantine_action(
 	username: str,
 	workflow_name: str,
 	generated_at: str,
-	score: Optional[float],
+	score: float | None,
 	ttl_seconds: int = 900,
-) -> Optional[dict]:
+) -> dict | None:
 	"""Build a signed ntfy action button for quarantining an offending image."""
 	if not image_path:
 		return None
@@ -344,7 +344,7 @@ def build_nsfw_quarantine_action(
 		"path": image_path,
 		"username": username,
 		"workflow_name": workflow_name or "unknown",
-		"generated_at": generated_at or datetime.now(timezone.utc).isoformat(),
+		"generated_at": generated_at or datetime.now(UTC).isoformat(),
 		"score": score,
 		"severity": nsfw_score_to_severity(score),
 	}
@@ -369,13 +369,13 @@ class NotificationResult:
 	skipped: bool = False
 	"""True when the event was disabled or no topic was configured."""
 
-	status_code: Optional[int] = None
+	status_code: int | None = None
 	"""HTTP status code returned by the ntfy server (None if skipped or errored)."""
 
-	error: Optional[str] = None
+	error: str | None = None
 	"""Error message if the send failed."""
 
-	response_body: Optional[str] = None
+	response_body: str | None = None
 	"""Raw response body from the ntfy server (useful for debugging)."""
 
 
@@ -390,20 +390,20 @@ def send_notification(
 	message: str = "",
 	*,
 	priority: str = "",
-	tags: Optional[List[str]] = None,
+	tags: list[str] | None = None,
 	click: str = "",
 	icon: str = "",
 	markdown: bool = False,
 	attachment_url: str = "",
 	attachment_file_path: str = "",
 	attachment_filename: str = "",
-	actions: Optional[List[dict]] = None,
+	actions: list[dict] | None = None,
 	delay: str = "",
 	email: str = "",
 	api_key: str = "",
 	timeout: int = DEFAULT_TIMEOUT_SECONDS,
 	_async: bool = True,
-) -> Union[NotificationResult, bool]:
+) -> NotificationResult | bool:
 	"""
 	Send a push notification to ntfy if the event is enabled and a topic is set.
 
@@ -526,14 +526,14 @@ def _build_request(
 	title: str,
 	message: str,
 	priority: str,
-	tags: Optional[List[str]],
+	tags: list[str] | None,
 	click: str,
 	icon: str,
 	markdown: bool,
 	attachment_url: str,
 	attachment_file_path: str,
 	attachment_filename: str,
-	actions: Optional[List[dict]],
+	actions: list[dict] | None,
 	delay: str,
 	email: str,
 	api_key: str,
@@ -545,9 +545,9 @@ def _build_request(
 	Returns a dict of keyword arguments (url, method, headers, data/files, timeout).
 	"""
 	url = f"{base_url}/{topic}"
-	headers: Dict[str, str] = {}
+	headers: dict[str, str] = {}
 	method = "POST"
-	data: Optional[Union[str, bytes]] = None
+	data: str | bytes | None = None
 	is_file_upload = False
 
 	# --- Authentication ---
@@ -569,7 +569,7 @@ def _build_request(
 
 	# --- Tags ---
 	# Reference: https://docs.ntfy.sh/publish/#tags-emojis
-	default_tags: List[str] = list(event_defaults.get("tags", []))
+	default_tags: list[str] = list(event_defaults.get("tags", []))
 	if tags:
 		merged_tags = list(dict.fromkeys(default_tags + list(tags)))
 	else:
@@ -660,8 +660,8 @@ def _send_request(
 	*,
 	url: str,
 	method: str,
-	headers: Dict[str, str],
-	data: Optional[Union[str, bytes]],
+	headers: dict[str, str],
+	data: str | bytes | None,
 	attachment_file_path: str,
 	timeout: int,
 	event_key: str,
@@ -725,7 +725,7 @@ def _send_request(
 # All extra ``**kwargs`` are forwarded to ``send_notification``.
 
 
-def notify_user_login(username: str, ip: str, **kwargs) -> Union[NotificationResult, bool]:
+def notify_user_login(username: str, ip: str, **kwargs) -> NotificationResult | bool:
 	"""Notify that a user logged in."""
 	return send_notification(
 		"user_login",
@@ -736,7 +736,7 @@ def notify_user_login(username: str, ip: str, **kwargs) -> Union[NotificationRes
 	)
 
 
-def notify_user_logout(username: str, ip: str, **kwargs) -> Union[NotificationResult, bool]:
+def notify_user_logout(username: str, ip: str, **kwargs) -> NotificationResult | bool:
 	"""Notify that a user logged out."""
 	return send_notification(
 		"user_logout",
@@ -747,7 +747,7 @@ def notify_user_logout(username: str, ip: str, **kwargs) -> Union[NotificationRe
 	)
 
 
-def notify_login_failure(username: str, ip: str, **kwargs) -> Union[NotificationResult, bool]:
+def notify_login_failure(username: str, ip: str, **kwargs) -> NotificationResult | bool:
 	"""Notify of a failed login attempt."""
 	return send_notification(
 		"login_failure",
@@ -760,7 +760,7 @@ def notify_login_failure(username: str, ip: str, **kwargs) -> Union[Notification
 
 def notify_user_created(
 	new_username: str, registered_by: str, ip: str, **kwargs
-) -> Union[NotificationResult, bool]:
+) -> NotificationResult | bool:
 	"""Notify that a new user was created."""
 	return send_notification(
 		"user_created",
@@ -773,7 +773,7 @@ def notify_user_created(
 
 def notify_user_deleted(
 	username: str, deleted_by: str, **kwargs
-) -> Union[NotificationResult, bool]:
+) -> NotificationResult | bool:
 	"""Notify that a user was deleted."""
 	return send_notification(
 		"user_deleted",
@@ -784,7 +784,7 @@ def notify_user_deleted(
 	)
 
 
-def notify_api_token_created(username: str, ip: str, **kwargs) -> Union[NotificationResult, bool]:
+def notify_api_token_created(username: str, ip: str, **kwargs) -> NotificationResult | bool:
 	"""Notify that an API token was generated."""
 	return send_notification(
 		"api_token_created",
@@ -795,7 +795,7 @@ def notify_api_token_created(username: str, ip: str, **kwargs) -> Union[Notifica
 	)
 
 
-def notify_mfa_enabled(username: str, ip: str, **kwargs) -> Union[NotificationResult, bool]:
+def notify_mfa_enabled(username: str, ip: str, **kwargs) -> NotificationResult | bool:
 	"""Notify that a user enabled MFA."""
 	return send_notification(
 		"mfa_enabled",
@@ -806,7 +806,7 @@ def notify_mfa_enabled(username: str, ip: str, **kwargs) -> Union[NotificationRe
 	)
 
 
-def notify_mfa_disabled(username: str, ip: str, **kwargs) -> Union[NotificationResult, bool]:
+def notify_mfa_disabled(username: str, ip: str, **kwargs) -> NotificationResult | bool:
 	"""Notify that a user disabled MFA."""
 	return send_notification(
 		"mfa_disabled",
@@ -824,11 +824,11 @@ def notify_nsfw_block(
 	image_path: str = "",
 	workflow_name: str = "unknown",
 	generated_at: str = "",
-	score: Optional[float] = None,
+	score: float | None = None,
 	cached: bool = False,
 	include_quarantine_action: bool = False,
 	**kwargs,
-) -> Union[NotificationResult, bool]:
+) -> NotificationResult | bool:
 	"""
 	Notify that an NSFW image was blocked.
 
@@ -846,7 +846,7 @@ def notify_nsfw_block(
 	severity = nsfw_score_to_severity(score)
 	score_text = f"{score:.2f}" if score is not None else "unknown"
 	severity_text = f"{severity}/10" if severity is not None else "unknown"
-	generated_value = generated_at or datetime.now(timezone.utc).isoformat()
+	generated_value = generated_at or datetime.now(UTC).isoformat()
 	cached_suffix = " [cached]" if cached else ""
 	action = None
 	if include_quarantine_action and image_path:
@@ -881,7 +881,7 @@ def notify_nsfw_block(
 
 def notify_image_generated(
 	username: str, image_path: str = "", *, attachment_url: str = "", click: str = "", **kwargs
-) -> Union[NotificationResult, bool]:
+) -> NotificationResult | bool:
 	"""
 	Notify that an image was successfully generated.
 
@@ -914,7 +914,7 @@ def notify_image_generated(
 
 def notify_image_generation_failed(
 	username: str, reason: str = "", **kwargs
-) -> Union[NotificationResult, bool]:
+) -> NotificationResult | bool:
 	"""Notify that an image generation failed."""
 	body = f"Image generation failed for user **{username}**."
 	if reason:
@@ -930,7 +930,7 @@ def notify_image_generation_failed(
 
 def notify_user_role_changed(
 	username: str, old_role: str, new_role: str, changed_by: str = "", **kwargs
-) -> Union[NotificationResult, bool]:
+) -> NotificationResult | bool:
 	"""Notify that a user's role was changed."""
 	actor = f" by **{changed_by}**" if changed_by else ""
 	return send_notification(
@@ -944,7 +944,7 @@ def notify_user_role_changed(
 
 def notify_settings_changed(
 	changed_by: str, setting_name: str = "", **kwargs
-) -> Union[NotificationResult, bool]:
+) -> NotificationResult | bool:
 	"""Notify that admin settings were changed."""
 	detail = f": **{setting_name}**" if setting_name else ""
 	return send_notification(
@@ -956,7 +956,7 @@ def notify_settings_changed(
 	)
 
 
-def notify_server_started(**kwargs) -> Union[NotificationResult, bool]:
+def notify_server_started(**kwargs) -> NotificationResult | bool:
 	"""Notify that the ComfyUI server has started."""
 	return send_notification(
 		"server_started",
@@ -966,7 +966,7 @@ def notify_server_started(**kwargs) -> Union[NotificationResult, bool]:
 	)
 
 
-def notify_server_stopped(**kwargs) -> Union[NotificationResult, bool]:
+def notify_server_stopped(**kwargs) -> NotificationResult | bool:
 	"""Notify that the ComfyUI server has stopped."""
 	return send_notification(
 		"server_stopped",
@@ -978,7 +978,7 @@ def notify_server_stopped(**kwargs) -> Union[NotificationResult, bool]:
 
 def notify_update_available(
 	current_version: str = "", new_version: str = "", release_url: str = "", **kwargs
-) -> Union[NotificationResult, bool]:
+) -> NotificationResult | bool:
 	"""Notify that a new plugin update is available."""
 	parts = ["A new MSS-Login update is available."]
 	if current_version and new_version:
@@ -1001,7 +1001,7 @@ def notify_experimental_recovery(
 	occurred_at: str = "",
 	details: str = "",
 	**kwargs,
-) -> Union[NotificationResult, bool]:
+) -> NotificationResult | bool:
 	"""Notify when experimental failsafe/recovery is triggered."""
 	timestamp = occurred_at or "unknown time"
 	guidance = "No action required."

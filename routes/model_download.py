@@ -6,7 +6,7 @@ import os
 import time
 import uuid
 from collections import deque
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 from aiohttp import web
 
@@ -66,7 +66,7 @@ _RUNNING_BY_PROVIDER = {"civitai": 0, "huggingface": 0}
 
 
 def _utc_now() -> str:
-	return datetime.now(timezone.utc).isoformat()
+	return datetime.now(UTC).isoformat()
 
 
 def _job_public_view(job: dict) -> dict:
